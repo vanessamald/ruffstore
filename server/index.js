@@ -1,52 +1,88 @@
 const express = require('express');
 const path = require('path'); 
-const app = express();
-const PORT = process.env.PORT || 3001;
+require('dotenv').config();
 
-const dotenv = require('dotenv');
-dotenv.config();
+require("@shopify/shopify-api/adapters/node");
+const { shopifyApi, LATEST_API_VERSION } = require("@shopify/shopify-api");
 
-// middleware
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
-
-app.use(express.static(path.resolve(__dirname, '../client/build')));
-
-app.post('/api/shopify', async (req, res) => {
-    try {
-      const shopifyApiEndpoint = 'https://2f7621-5.myshopify.com/admin/api/2022-01/graphql.json';
-      const apiKey = process.env.API_KEY;
-      const { query } = req.body;
-  
-      const response = await axios.post(
-        shopifyApiEndpoint,
-        { query },
-        {
-          headers: {
-            'X-Shopify-Storefront-Access-Token': apiKey,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-  
-      res.json(response.data);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Internal Server Error' });
-    }
-  });
-
-app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../client/build', 'index.html'))
+const shopify = shopifyApi({
+    apiKey: process.env.CLIENT_ID,
+    apiSecretKey: process.env.CLIENT_KEY,
+    scopes: ["read_products"],
+    hostName: process.env.HOST_NAME,
+    apiVersion: LATEST_API_VERSION,
+    isEmbeddedApp: false
 });
 
-if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../client/build')))
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, '../client/build/index.html'));
-    });
+const app = express();
+const port = 3000;
+
+const shop = process.env.STORE_URL;
+const storefrontAccessToken = process.env.STOREFRONT_ACCESS_TOKEN;
+console.log('storefrontAccessToken:', storefrontAccessToken);
+console.log('Store Domain:', shop);
+
+if (!storefrontAccessToken) {
+    console.error('Error: storefrontAccessToken is undefined. Make sure the environment variable is set.');
+    process.exit(1); // Exit the process to prevent further execution
 }
 
-app.listen(PORT, () => {
-    console.log(`Server listening on ${PORT}`);
+// Async function to create the storefront client
+const createClient = async () => {
+    try {
+        const storefrontAccessToken = process.env.STOREFRONT_ACCESS_TOKEN
+        const storeDomain = process.env.STORE_URL;
+
+        if (!storefrontAccessToken) {
+            throw new Error("Storefront access token is missing or undefined.");
+        }
+
+        if (!storeDomain || storeDomain === undefined) {
+            throw new Error("Shop domain is missing or undefined.");
+        }
+
+        console.log(storeDomain);
+
+        const client = new shopify.clients.Storefront({
+            storeDomain: storeDomain,
+            //storefrontAccessToken,
+            session: {
+                accessToken: storefrontAccessToken,
+                storeDomain:  storeDomain
+            }
+        });
+
+        return client;
+    } catch (error) {
+        console.error("Error creating storefront client:", error);
+        throw error; // Re-throw the error to be caught by the caller
+    }
+};
+
+app.get("/", async (req, res) => {
+    try {
+        const client = await createClient();
+        const products = await client.query({
+            data: `{
+                products (first: 3) {
+                    edges {
+                        node {
+                            id
+                            title
+                        }
+                    }
+                }
+            }`,
+        });
+        res.send(products);
+    } catch (error) {
+        console.error("Error fetching products:", error);
+        res.status(500).send("Internal Server Error");
+    }
 });
+
+// static file
+app.use(express.static(path.resolve(__dirname, '../client/build')));
+
+// listening for requests
+app.listen(port, () => console.log(`Listening at http://localhost:${port}`));
