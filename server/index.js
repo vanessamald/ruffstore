@@ -15,7 +15,7 @@ const shopify = shopifyApi({
 });
 
 const app = express();
-const port = 3000;
+const port = 3001;
 
 const shop = process.env.STORE_URL;
 const storefrontAccessToken = process.env.STOREFRONT_ACCESS_TOKEN;
@@ -41,23 +41,25 @@ const createClient = async () => {
             throw new Error("Shop domain is missing or undefined.");
         }
 
-        console.log(storeDomain);
+        //console.log(storeDomain);
 
         const client = new shopify.clients.Storefront({
-            storeDomain: storeDomain,
+            domain: storeDomain,
             //storefrontAccessToken,
             session: {
                 accessToken: storefrontAccessToken,
                 storeDomain:  storeDomain
             }
         });
-
+        console.log("Client Object:", client);
         return client;
+        
     } catch (error) {
         console.error("Error creating storefront client:", error);
         throw error; // Re-throw the error to be caught by the caller
     }
 };
+
 
 app.get("/", async (req, res) => {
     try {
@@ -80,6 +82,7 @@ app.get("/", async (req, res) => {
         res.status(500).send("Internal Server Error");
     }
 });
+
 
 // static file
 app.use(express.static(path.resolve(__dirname, '../client/build')));
